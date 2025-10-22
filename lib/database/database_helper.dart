@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path/path.dart';
 import '../models/folder_model.dart';
 import '../models/card_model.dart';
@@ -16,8 +18,17 @@ class DatabaseHelper {
   }
 
   Future<Database> _initDB(String filePath) async {
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, filePath);
+    String path;
+
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      // For desktop platforms, use a local directory
+      final appDir = Directory.current.path;
+      path = join(appDir, filePath);
+    } else {
+      // For mobile platforms, use getDatabasesPath()
+      final dbPath = await getDatabasesPath();
+      path = join(dbPath, filePath);
+    }
 
     return await openDatabase(
       path,
