@@ -79,6 +79,134 @@ class _FoldersScreenState extends State<FoldersScreen> {
     }
   }
 
+  Future<void> _deleteFolder(Folder folder) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Folder'),
+        content: Text(
+          'Are you sure you want to delete "${folder.name}" folder and all its cards? This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _dbHelper.deleteFolder(folder.id!);
+      _loadFolders();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${folder.name} folder deleted'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  void _showEditFolderDialog(Folder folder) {
+    final nameController = TextEditingController(text: folder.name);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename Folder'),
+        content: TextField(
+          controller: nameController,
+          decoration: const InputDecoration(
+            labelText: 'Folder Name',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final updatedFolder = Folder(
+                id: folder.id,
+                name: nameController.text,
+                timestamp: folder.timestamp,
+              );
+              await _dbHelper.updateFolder(updatedFolder);
+              await _loadFolders();
+              if (mounted) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Folder renamed'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddFolderDialog() {
+    final nameController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Folder'),
+        content: TextField(
+          controller: nameController,
+          decoration: const InputDecoration(
+            labelText: 'Folder Name',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              if (nameController.text.trim().isEmpty) {
+                return;
+              }
+              final newFolder = Folder(
+                name: nameController.text.trim(),
+              );
+              await _dbHelper.insertFolder(newFolder);
+              await _loadFolders();
+              if (mounted) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Folder added'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -87,6 +215,13 @@ class _FoldersScreenState extends State<FoldersScreen> {
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         elevation: 2,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add),
+            onPressed: _showAddFolderDialog,
+            tooltip: 'Add Folder',
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -123,68 +258,129 @@ class _FoldersScreenState extends State<FoldersScreen> {
                             );
                             _loadFolders();
                           },
+                          onLongPress: () {
+                            showModalBottomSheet(
+                              context: context,
+                              builder: (context) => Container(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ListTile(
+                                      leading: const Icon(Icons.edit, color: Colors.blue),
+                                      title: const Text('Rename Folder'),
+                                      onTap: () {
+                                        Navigator.pop(context);
+                                        _showEditFolderDialog(folder);
+                                      },
+                                    ),
+                                    ListTile(
+                                      leading: const Icon(Icons.delete, color: Colors.red),
+                                      title: const Text('Delete Folder'),
+                                      onTap: () {
+                                        Navigator.pop(context);
+                                        _deleteFolder(folder);
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
                           child: Card(
                             elevation: 4,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
+                            child: Stack(
                               children: [
-                                // Preview Image
-                                Container(
-                                  height: 120,
-                                  width: 120,
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey[200],
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: firstCard != null
-                                      ? ClipRRect(
-                                          borderRadius: BorderRadius.circular(8),
-                                          child: Image.network(
-                                            firstCard.imageUrl,
-                                            fit: BoxFit.contain,
-                                            errorBuilder: (context, error, stackTrace) {
-                                              return Center(
-                                                child: Text(
-                                                  _getFolderIcon(folder.name),
-                                                  style: const TextStyle(fontSize: 48),
-                                                ),
-                                              );
-                                            },
-                                            loadingBuilder: (context, child, loadingProgress) {
-                                              if (loadingProgress == null) return child;
-                                              return const Center(
-                                                child: CircularProgressIndicator(),
-                                              );
-                                            },
-                                          ),
-                                        )
-                                      : Center(
+                                Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    // Preview Image
+                                    Container(
+                                      height: 120,
+                                      width: 120,
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey[200],
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: firstCard != null
+                                          ? ClipRRect(
+                                              borderRadius: BorderRadius.circular(8),
+                                              child: Image.network(
+                                                firstCard.imageUrl,
+                                                fit: BoxFit.contain,
+                                                errorBuilder: (context, error, stackTrace) {
+                                                  return Center(
+                                                    child: Text(
+                                                      _getFolderIcon(folder.name),
+                                                      style: const TextStyle(fontSize: 48),
+                                                    ),
+                                                  );
+                                                },
+                                                loadingBuilder: (context, child, loadingProgress) {
+                                                  if (loadingProgress == null) return child;
+                                                  return const Center(
+                                                    child: CircularProgressIndicator(),
+                                                  );
+                                                },
+                                              ),
+                                            )
+                                          : Center(
+                                              child: Text(
+                                                _getFolderIcon(folder.name),
+                                                style: const TextStyle(fontSize: 48),
+                                              ),
+                                            ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    // Folder Name with Edit Icon
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Flexible(
                                           child: Text(
-                                            _getFolderIcon(folder.name),
-                                            style: const TextStyle(fontSize: 48),
+                                            folder.name,
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                              color: _getFolderColor(folder.name),
+                                            ),
+                                            textAlign: TextAlign.center,
+                                            overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
+                                        const SizedBox(width: 4),
+                                        GestureDetector(
+                                          onTap: () => _showEditFolderDialog(folder),
+                                          child: Icon(
+                                            Icons.edit,
+                                            size: 16,
+                                            color: Colors.grey[600],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    // Card Count
+                                    Text(
+                                      '$cardCount card${cardCount != 1 ? 's' : ''}',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(height: 12),
-                                // Folder Name
-                                Text(
-                                  folder.name,
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: _getFolderColor(folder.name),
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                // Card Count
-                                Text(
-                                  '$cardCount card${cardCount != 1 ? 's' : ''}',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.grey[600],
+                                // Delete button in top-right corner
+                                Positioned(
+                                  top: 4,
+                                  right: 4,
+                                  child: IconButton(
+                                    icon: const Icon(Icons.delete, size: 20),
+                                    color: Colors.red,
+                                    onPressed: () => _deleteFolder(folder),
                                   ),
                                 ),
                               ],
